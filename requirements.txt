@@ -1,3 +1,4 @@
+numpy>=2.0,<3
 # Core web framework
 fastapi[standard]==0.115.0
 uvicorn[standard]==0.30.6
@@ -8,16 +9,18 @@ python-dotenv==1.0.1
 
 # AI / embeddings
 sentence-transformers==3.0.1
-faiss-cpu==1.8.0
+faiss-cpu>=1.12.0
 
 # Metrics (Prometheus)
 prometheus-client==0.21.0
 
 # Utilities
-numpy>=1.26.4
+numpy>=2.0,<3
 scipy>=1.14.1
 pydantic==2.9.2
 
 # Optional but handy
 orjson==3.10.7
 rich==13.7.1
+
+pydantic-settings==2.4.0

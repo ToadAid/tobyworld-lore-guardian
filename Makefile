@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 # ---- paths & config ----
 ROOT := $(shell pwd)
-VENV ?= ../.venv
+VENV ?= .venv
 PY    := $(VENV)/bin/python
 PIP   := $(VENV)/bin/pip
 HOST  ?= 0.0.0.0
@@ -30,6 +30,7 @@ help:
 	@echo "make test             # pytest -v"
 	@echo "make precommit-install# install git pre-commit hooks"
 
+	@echo "make index       # build RAG index from $(SCROLLS_DIR) → $(INDEX_DIR)"
 venv:
 	test -d $(VENV) || python3 -m venv $(VENV)
 
@@ -82,3 +83,10 @@ test:
 precommit-install:
 	$(PIP) install pre-commit
 	$(VENV)/bin/pre-commit install
+
+SCROLLS_DIR ?= lore-scrolls
+INDEX_DIR   ?= data/index
+
+.PHONY: index
+index: venv
+	$(PY) scripts/index_scrolls.py --scrolls "$(SCROLLS_DIR)" --out "$(INDEX_DIR)"
