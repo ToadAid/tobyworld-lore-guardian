@@ -29,3 +29,12 @@ coverage.xml
 htmlcov/
 *.log
 EOF
+# runtime & local data
+data/
+lore-scrolls/
+*.idx
+*.npy
+*.npz
+# bytecode
+__pycache__/
+*.py[cod]
