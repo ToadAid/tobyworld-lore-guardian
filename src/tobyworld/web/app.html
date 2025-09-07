@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Tobyworld — Mirror</title>
+  <style>
+    :root { --bg:#0b1220; --panel:#111a2b; --ink:#dfe7ff; --muted:#9fb0d9; --accent:#5b8cff; --pill:#19233a; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; }
+    header { display:flex; align-items:center; gap:.75rem; padding:16px 18px; border-bottom:1px solid #13203a; }
+    header h1 { font-size:18px; margin:0; letter-spacing:.2px; }
+    .wrap { display:grid; grid-template-columns: 1fr 320px; gap:16px; padding:16px; }
+    .bar { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+    .bar input { flex:1; padding:12px 14px; border:1px solid #1a2743; background:#0e1729; color:var(--ink); border-radius:10px; outline:none; }
+    .bar button { padding:12px 16px; background:var(--accent); color:white; border:0; border-radius:10px; cursor:pointer; }
+    .panel { background:var(--panel); border:1px solid #15223d; border-radius:14px; padding:14px; }
+    .muted { color:var(--muted); font-size:12px; }
+    .answer pre { white-space:pre-wrap; word-wrap:break-word; margin:0; }
+    .asked { margin-bottom:8px; color:#cfe0ff; }
+    .asked .q { color:#fff; }
+    .ctx h3 { margin:0 0 8px 0; font-size:13px; color:#b9c8ee; }
+    .ctx ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+    .ctx li { background:var(--pill); border:1px solid #192b4f; padding:8px 10px; border-radius:10px; color:var(--muted); }
+    .ctx .t { color:#dbe6ff; }
+  </style>
+</head>
+<body>
+  <header>
+    <div style="font-size:20px">🌕</div>
+    <h1>Tobyworld — Mirror</h1>
+  </header>
+
+  <div class="wrap">
+    <div>
+      <form id="ask-form" class="bar">
+        <input id="q" name="q" type="text" autocomplete="off" placeholder='Ask the Mirror…' autofocus/>
+        <button id="ask-btn" type="submit">Ask</button>
+      </form>
+
+      <div id="answer-panel" class="panel answer">
+        <div class="muted">Ask something to begin.</div>
+      </div>
+    </div>
+
+    <aside class="panel ctx">
+      <h3>Context</h3>
+      <ul id="ctx-list"></ul>
+    </aside>
+  </div>
+
+  <script>
+    const form   = document.getElementById('ask-form');
+    const input  = document.getElementById('q');
+    const panel  = document.getElementById('answer-panel');
+    const ctxUl  = document.getElementById('ctx-list');
+    const btn    = document.getElementById('ask-btn');
+
+    function esc(s){ return (s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+    async function askMirror(q){
+      const res = await fetch('/ask', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ user: 'web', question: q })
+      });
+      if(!res.ok) throw new Error('Request failed: ' + res.status);
+      return await res.json();
+    }
+
+    function render(q, data){
+      const a    = data.answer || '';
+      const meta = data.meta || {};
+      const tone = (meta.rag && typeof meta.rag.tone_score === 'number') ? meta.rag.tone_score.toFixed(2) : '';
+
+      // Left: move "You asked…" INTO the answer card (like v2)
+      panel.innerHTML = `
+        <div class="asked">You asked: "<span class="q">${esc(q)}</span>"</div>
+        ${tone ? `<div class="muted">tone: ${tone}</div>` : ``}
+        <pre id="answer-pre"></pre>
+      `;
+      // Use textContent to preserve formatting safely
+      const pre = document.getElementById('answer-pre');
+      pre.textContent = a;
+
+      // Right: context list from meta.rag.docs
+      ctxUl.innerHTML = '';
+      const docs = (meta.rag && meta.rag.docs) ? meta.rag.docs : [];
+      docs.forEach(d => {
+        const li = document.createElement('li');
+        const t  = d.meta && d.meta.title ? d.meta.title : (d.id || 'doc');
+        const sc = (typeof d.score === 'number') ? d.score.toFixed(3) : '';
+        li.innerHTML = `<span class="t">${esc(t)}</span>${sc ? ` <span class="muted">· score ${sc}</span>` : ''}`;
+        ctxUl.appendChild(li);
+      });
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const q = input.value.trim();
+      if(!q) return;
+      btn.disabled = true;
+      panel.innerHTML = `<div class="asked">You asked: "<span class="q">${esc(q)}</span>"</div><div class="muted">…thinking…</div>`;
+      try {
+        const data = await askMirror(q);
+        render(q, data);
+        // Reset field & focus for the next question
+        form.reset();
+        input.focus();
+      } catch (err) {
+        panel.innerHTML = `<div class="asked">You asked: "<span class="q">${esc(q)}</span>"</div><pre>${esc(String(err))}</pre>`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // focus on load
+    input.focus();
+  </script>
+</body>
+</html>

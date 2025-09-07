@@ -1,0 +1,276 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Tobyworld — Status</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #0f1530;
+      --panel-2: #121a39;
+      --border: #1c2543;
+      --fg: #e6e8ee;
+      --muted: #a9b2c3;
+      --accent: #8fb4ff;
+      --good: #48d597;
+      --warn: #f2c84b;
+      --bad: #ff7a7a;
+      --pill: #131c4a;
+    }
+    .theme-light {
+      --bg: #f7f9fc;
+      --panel: #ffffff;
+      --panel-2: #f2f5fb;
+      --border: #e1e8f5;
+      --fg: #121625;
+      --muted: #5d6b85;
+      --accent: #2e64ff;
+      --good: #1aa06a;
+      --warn: #c99300;
+      --bad: #d83a3a;
+      --pill: #e8efff;
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, Helvetica, Arial;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    .wrap { max-width: 1100px; margin: 32px auto 80px; padding: 0 16px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    h1 { margin: 0; font-size: 22px; }
+    .muted { color: var(--muted); }
+    a { color: var(--accent); text-decoration: none; }
+    .row { display:flex; flex-wrap: wrap; gap:12px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      flex: 1 1 280px;
+      min-width: 260px;
+    }
+    .card h3 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+    .kv { display:grid; grid-template-columns: 160px 1fr; gap:6px 10px; font-size: 14px; }
+    .kv div.key { color: var(--muted); }
+    .pill {
+      display:inline-block; padding:4px 10px; border-radius:9999px; background:var(--pill);
+      border: 1px solid var(--border); color: var(--fg); font-size:12px; margin:2px 6px 2px 0;
+    }
+    .list { margin: 0; padding-left: 16px; }
+    .list li { margin: 6px 0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .toolbar { display:flex; gap:8px; align-items:center; }
+    .btn {
+      background: var(--panel-2); color: var(--fg);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 8px 12px; cursor: pointer;
+    }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; }
+    .ok   { background: var(--good); }
+    .warn { background: var(--warn); }
+    .bad  { background: var(--bad); }
+    .grid-2 { display:grid; gap:12px; grid-template-columns: 1fr 1fr; }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+    .tiny { font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>🪞 Tobyworld — Status</h1>
+        <div class="muted tiny">
+          <a href="/app">Ask</a> • <a href="/docs">API Docs</a>
+        </div>
+      </div>
+      <div class="toolbar">
+        <button id="themeToggle" class="btn">🌙 Night</button>
+        <button id="refresh" class="btn">Refresh</button>
+        <span class="muted tiny">Auto-updates every 5s</span>
+      </div>
+    </header>
+
+    <div class="row">
+      <div class="card">
+        <h3>System</h3>
+        <div class="kv">
+          <div class="key">Uptime</div><div id="uptime">—</div>
+          <div class="key">Version</div><div id="version">—</div>
+          <div class="key">Requests</div><div id="reqs">—</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Retriever</h3>
+        <div id="retriever">
+          <div class="muted tiny">No data yet.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Lucidity</h3>
+        <div id="lucidity">
+          <div class="muted tiny">Waiting for runs…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top:12px;">
+      <div class="card">
+        <h3>Learning — Routes</h3>
+        <div id="routes">
+          <div class="muted tiny">No route stats yet.</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Learning — Top Topics</h3>
+        <ul class="list" id="topics">
+          <li class="muted tiny">No topics yet.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <h3>Learning — Top Docs</h3>
+      <div id="docs">
+        <div class="muted tiny">No docs yet.</div>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+(function(){
+  // ---- Theme handling -------------------------------------------------------
+  const root = document.documentElement;
+  const btnTheme = document.getElementById('themeToggle');
+  function setTheme(mode){
+    if(mode === 'light'){
+      root.classList.add('theme-light'); btnTheme.textContent = '🌙 Night';
+    } else {
+      root.classList.remove('theme-light'); btnTheme.textContent = '☀️ Day';
+    }
+    localStorage.setItem('tw_theme', mode);
+  }
+  const saved = localStorage.getItem('tw_theme');
+  setTheme(saved || 'dark');
+  btnTheme.addEventListener('click', () => {
+    const now = root.classList.contains('theme-light') ? 'dark' : 'light';
+    setTheme(now);
+  });
+
+  // ---- Elements -------------------------------------------------------------
+  const elUptime = document.getElementById('uptime');
+  const elVersion = document.getElementById('version');
+  const elReqs = document.getElementById('reqs');
+  const elRetriever = document.getElementById('retriever');
+  const elTopics = document.getElementById('topics');
+  const elRoutes = document.getElementById('routes');
+  const elDocs = document.getElementById('docs');
+  const elLucidity = document.getElementById('lucidity');
+  const btnRefresh = document.getElementById('refresh');
+
+  function fmtSec(s){
+    s = Math.max(0, Number(s||0));
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.floor(s%60);
+    return `${h}h ${m}m ${sec}s`;
+    }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+  function renderStatus(js){
+    // system
+    elUptime.textContent = fmtSec(js.uptime_seconds);
+    elVersion.textContent = esc(js.version);
+    const r = js.requests || {};
+    elReqs.textContent = `health:${r.health||0}  diag:${r.diag||0}  ask:${r.ask||0}  debug_route:${r.debug_route||0}`;
+
+    // retriever
+    const rs = js.retriever || {};
+    const arcs = rs.per_arc ? Object.entries(rs.per_arc).map(([k,v])=> `<span class="pill">${esc(k)}: ${esc(v)}</span>`).join(' ') : '';
+    const uniq = rs.unique_before_cut ?? '—';
+    const returned = rs.returned ?? '—';
+    elRetriever.innerHTML = `
+      <div class="kv">
+        <div class="key">Arcs</div><div>${arcs || '<span class="muted tiny">—</span>'}</div>
+        <div class="key">Unique</div><div>${esc(uniq)}</div>
+        <div class="key">Returned</div><div>${esc(returned)}</div>
+      </div>`;
+
+    // lucidity (optional — shown if the backend includes it in status.learning or elsewhere)
+    // We try: js.learning.lucidity or js.retriever.lucidity, else show muted text.
+    let luci = (js.learning && js.learning.lucidity) || (js.retriever && js.retriever.lucidity) || null;
+    if(luci && typeof luci === 'object'){
+      const lvl = esc(luci.level || '—');
+      const t = luci.traits || {};
+      elLucidity.innerHTML = `
+        <div class="kv">
+          <div class="key">Level</div><div><span class="pill">${lvl}</span></div>
+          <div class="key">Autonomy</div><div>${('autonomy' in t)? Number(t.autonomy).toFixed(2) : '—'}</div>
+          <div class="key">Creativity</div><div>${('creativity' in t)? Number(t.creativity).toFixed(2) : '—'}</div>
+          <div class="key">Initiative</div><div>${('initiative' in t)? Number(t.initiative).toFixed(2) : '—'}</div>
+          ${('score' in t)? `<div class="key">Score</div><div>${Number(t.score).toFixed(3)}</div>` : ''}
+        </div>`;
+    } else {
+      elLucidity.innerHTML = `<div class="muted tiny">No lucidity metrics yet. Run a query on <a href="/app">/app</a>.</div>`;
+    }
+
+    // routes
+    const routes = js.learning && js.learning.routes || {};
+    if(Object.keys(routes).length){
+      elRoutes.innerHTML = Object.entries(routes).map(([sym,cnt]) => {
+        const badge = `<span class="pill">${esc(sym)} · ${esc(cnt)}</span>`;
+        return badge;
+      }).join(' ');
+    } else {
+      elRoutes.innerHTML = `<div class="muted tiny">No route stats yet.</div>`;
+    }
+
+    // topics
+    const topics = js.learning && js.learning.top_topics || [];
+    if(topics.length){
+      elTopics.innerHTML = topics.map(t => `<li><span class="pill">${esc(t.topic || t[0] || '')}</span> <span class="muted tiny">${esc(t.count || t[1] || '')}</span></li>`).join('');
+    } else {
+      elTopics.innerHTML = `<li class="muted tiny">No topics yet.</li>`;
+    }
+
+    // top docs
+    const docs = js.learning && js.learning.top_docs || [];
+    if(docs.length){
+      elDocs.innerHTML = docs.map(d => {
+        const id = esc(d.doc_id || '');
+        const c = Number(d.count || 0);
+        const ts = Number(d.last_ts || 0);
+        const when = ts ? new Date(ts*1000).toLocaleString() : '—';
+        return `<div style="margin:6px 0;">
+          <span class="pill mono">${id}</span>
+          <span class="muted tiny">count ${c} • last ${when}</span>
+        </div>`;
+      }).join('');
+    } else {
+      elDocs.innerHTML = `<div class="muted tiny">No docs yet.</div>`;
+    }
+  }
+
+  async function fetchStatus(){
+    try{
+      const r = await fetch('/debug/status');
+      const js = await r.json();
+      renderStatus(js);
+    }catch(e){
+      console.error(e);
+    }
+  }
+
+  btnRefresh.addEventListener('click', fetchStatus);
+  fetchStatus();
+  setInterval(fetchStatus, 5000);
+})();
+</script>
+</body>
+</html>
