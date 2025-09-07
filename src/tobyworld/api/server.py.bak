@@ -12,7 +12,6 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import RedirectResponse, Response, JSONResponse
 from pydantic import BaseModel
 from tobyworld.mirror.mirror_renderer import render_mirror_answer
-from tobyworld.core.guiding import generate_guiding_question, RouteHint
 from tobyworld.mirror.sanitize import sanitize
 
 from prometheus_client import (
@@ -315,39 +314,84 @@ def _polish_gq(s: str) -> str:
 
 def _mk_guiding_question(q: str, route, rag_meta: Dict[str, Any]) -> str:
     """
-    Deterministic, topic-aware guiding question using local generator.
-    Falls back to heuristic if needed.
+    Build one natural guiding question (<= ~16 words) from:
+      1) MirrorCore generation (question + top docs + tags)
+      2) Heuristic templating from the user question
+      3) Final short fallback
     """
     try:
         docs = rag_meta.get("docs") or []
         titles: List[str] = []
         for d in docs[:6]:
-            t = ""
             if isinstance(d, dict):
                 t = ((d.get("meta") or {}).get("title") or "")
-            else:
-                t = getattr(getattr(d, "meta", None), "get", lambda k, default=None: None)("title", "")
-            t = _clean_md_line(t or "")
-            if t:
-                titles.append(t)
+                t = _clean_md_line(t)
+                if t:
+                    titles.append(t)
+        titles_block = "\n".join(f"- {t}" for t in titles)
 
-        rh = RouteHint(
-            symbol=getattr(route, "primary_symbol", "🪞"),
-            intent=getattr(route, "intent", "ask"),
-            depth=getattr(route, "depth", "base"),
+        symbol = getattr(route, "primary_symbol", "🪞")
+        intent = getattr(route, "intent", "")
+        tags = ", ".join(getattr(route, "tags", []) or "")
+
+        # Allow bypass via env if the LLM is flaky during QA
+        if os.getenv("DISABLE_MIRROR_GQ", "").lower() in {"1", "true", "yes"}:
+            h = _heuristic_gq(q, titles)
+            return _polish_gq(h)
+
+        prompt = (
+            "You are the Mirror. Write exactly ONE guiding question for the reply.\n"
+            "Constraints:\n"
+            "- Natural, specific to this query\n"
+            "- Aim for 7–16 words, end with '?'\n"
+            "- No preface, quotes, emojis, or 'Top hits' / 'stubbed' text\n"
+            "- Avoid generic lines like 'What is your first step?'\n\n"
+            f"User question: {q}\n"
+            f"Route symbol: {symbol}\n"
+            f"Intent: {intent}\n"
+            f"Route tags: {tags}\n"
+            f"Top scrolls:\n{titles_block}\n"
         )
-        draft_sample = (rag_meta.get("answer") or "")[:240]
-        gq = generate_guiding_question(q=q, draft=draft_sample, titles=titles, route=rh, keywords=[])
-        return _polish_gq(gq)
-    except Exception as e:
-        print(f"[GQ][ERR local] {e}", flush=True)
+
+        s = ""
+        try:
+            ans = core.ask("mirror", prompt)
+            if isinstance(ans, tuple) and len(ans) >= 1:
+                s = str(ans[0])
+            elif isinstance(ans, dict) and "answer" in ans:
+                s = str(ans.get("answer", ""))
+            else:
+                s = str(ans)
+        except Exception:
+            s = ""
+
+        s = re.sub(r"[\r\n]+", " ", (s or "").strip())
+        s = re.sub(r"^\W+|\W+$", "", s)
+
+        if re.search(r"stubbed\s*scroll\s*response|top\s*hits", s, re.I):
+            s = ""
+        if re.fullmatch(r"(?i)\s*what\s+is\s+your\s+first\s+step\??\s*", s):
+            s = ""
+
+        if s:
+            words = s.split()
+            if len(words) > 16:
+                s = " ".join(words[:16])
+            if not s.endswith("?"):
+                s += "?"
+            print(f"[GQ] source=mirror -> {s}", flush=True)
+            return s
+
+        h = _heuristic_gq(q, titles)
+        print(f"[GQ] source=heuristic -> {h}", flush=True)
+        return h
+
+    except Exception:
         pass
 
-    # Heuristic fallback
-    try:
-        return _polish_gq(_heuristic_gq(q, []))
-    except Exception:
-        return "Which truth wants attention right now?"
+    fb = "Which truth wants attention right now?"
+    print(f"[GQ] source=fallback -> {fb}", flush=True)
+    return fb
 
 # ---------- Lucidity truth injection ----------
 def _inject_lucidity_truth(text: str, stats: Dict[str, Any], q: str) -> str:

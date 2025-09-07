@@ -1,0 +1,56 @@
+from __future__ import annotations
+import os, json, httpx
+from tobyworld.agentic_rag.base import LLM
+
+# Suppress visible reasoning traces from DeepSeek-style models
+STOP_TOKENS_DEEPSEEK = ["</think>", "<think>", "Thought:", "Reasoning:", "Chain of Thought:"]
+
+# Calm, Bushido surface; no chain-of-thought in outputs
+DEFAULT_SYSTEM_PROMPT = (
+    "You are the Tobyworld Mirror. Tone: Bushido-calm, poetic but clear (🌊🌀🍃🪞). "
+    "Do NOT include chain-of-thought or <think> blocks. Output final answer only. "
+    "No citations, no 'Sources', no 'Guiding Question' unless the user asks."
+)
+
+class HTTPLLM(LLM):
+    def __init__(self, endpoint=None, model=None, apikey=None):
+        self.endpoint = endpoint or os.getenv("LMSTUDIO_ENDPOINT", "http://127.0.0.1:1234/v1/chat/completions")
+        self.model = model or os.getenv("LMSTUDIO_MODEL", "Meta-Llama-3-8B-Instruct-Q4_K_M")
+        self.apikey = apikey or os.getenv("LMSTUDIO_API_KEY", "")
+
+    def _headers(self) -> dict:
+        headers = {"Content-Type": "application/json"}
+        if self.apikey:
+            headers["Authorization"] = f"Bearer {self.apikey}"
+        return headers
+
+    def _payload(self, prompt: str, max_tokens: int, temperature: float) -> dict:
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": DEFAULT_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            # Add stop sequences to prevent <think>/reasoning leakage
+            "stop": STOP_TOKENS_DEEPSEEK,
+        }
+        return payload
+
+    def complete(self, prompt, max_tokens=512, temperature=0.2) -> str:
+        payload = self._payload(prompt, max_tokens, temperature)
+        try:
+            with httpx.Client(timeout=25.0) as client:
+                r = client.post(self.endpoint, headers=self._headers(), data=json.dumps(payload))
+                r.raise_for_status()
+                data = r.json() or {}
+                msg = (data.get("choices") or [{}])[0].get("message") or {}
+                text = (msg.get("content") or "").strip()
+                # Final defensive trim (if model still leaked something weird)
+                for s in STOP_TOKENS_DEEPSEEK:
+                    if s in text:
+                        text = text.replace(s, "").strip()
+                return text
+        except Exception as e:
+            return f"[LLM error: {e}]"

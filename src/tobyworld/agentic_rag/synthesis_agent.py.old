@@ -1,0 +1,86 @@
+# src/tobyworld/agentic_rag/synthesis_agent.py
+from __future__ import annotations
+from typing import List, Tuple
+import re
+
+from .base import DocBlob, QueryContext, LLM
+# cadence_guard lives under tobyworld/mirror/
+from tobyworld.mirror.cadence_guard import enforce as cadence_enforce
+
+
+_GUIDING_RX = re.compile(r"(?i)\bGuiding\s+Question\s*:", re.UNICODE)
+
+
+class SynthesisAgent:
+    def __init__(self, llm: LLM, cite_tag: str = "[ref:{i}]"):
+        self.llm = llm
+        self.cite_tag = cite_tag
+
+    def _clamp_refs(self, text: str, max_ref: int) -> str:
+        """
+        Ensure [ref:n] indices stay within 1..max_ref.
+        If no docs (max_ref == 0), strip all [ref:n] tags.
+        """
+        if max_ref <= 0:
+            return re.sub(r"\[ref:\d+\]", "", text)
+        def repl(m):
+            try:
+                n = int(m.group(1))
+                n = max(1, min(n, max_ref))
+                return f"[ref:{n}]"
+            except Exception:
+                return ""
+        return re.sub(r"\[ref:(\d+)\]", repl, text)
+
+    @staticmethod
+    def _ensure_guiding_question(text: str) -> str:
+        """Append a default guiding question if none is present."""
+        if _GUIDING_RX.search(text or ""):
+            return text
+        return (text.rstrip() + "\n\n**Guiding Question:** What is your first step?\n")
+
+    def compose(self, query: str, ctx: QueryContext, docs: List[DocBlob]) -> Tuple[str, List[int], float]:
+        # If no context docs, respond gracefully without guessing.
+        if not docs:
+            fallback = (
+                "Traveler,\n"
+                "I don't know yet—bring me a scroll.\n\n"
+                "**Guiding Question:** What is your first step?\n"
+            )
+            ok, revised, notes, score = cadence_enforce(
+                route=ctx.route_symbol or "🪞",
+                text=fallback,
+                user_lang_hint=ctx.user_lang_hint,
+            )
+            final = revised or fallback
+            final = self._ensure_guiding_question(final)
+            return final, [], score
+
+        # keep contexts compact for latency
+        context = "\n".join(f"[{i+1}] {d.text[:900]}" for i, d in enumerate(docs, 1))
+        sys = (
+            "You are the Mirror's Scribe. Answer with clarity and precision. "
+            "Use ONLY the provided Context; do not introduce outside facts. "
+            "Weave up to 4 citations inline using [ref:1], [ref:2], etc. "
+            "If the context is insufficient to answer, say: "
+            "\"I don't know yet—bring me a scroll.\" "
+            "Keep it under 220 words unless asked."
+        )
+        prompt = f"{sys}\n\nUser: {query}\n\nContext:\n{context}\n\nDraft a direct answer."
+        draft = self.llm.complete(prompt, max_tokens=420, temperature=0.2)
+
+        # Clamp bad/overflow citations
+        max_ref = min(4, len(docs))
+        draft = self._clamp_refs(draft, max_ref)
+
+        # Enforce Bushido cadence / tone via cadence_guard
+        ok, revised, notes, score = cadence_enforce(
+            route=ctx.route_symbol or "🪞",
+            text=draft,
+            user_lang_hint=ctx.user_lang_hint,
+        )
+
+        final = revised or draft
+        final = self._ensure_guiding_question(final)
+
+        return final, list(range(1, max_ref + 1)), score
