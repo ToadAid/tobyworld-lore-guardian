@@ -1,40 +1,15 @@
-cat > .gitignore <<'EOF'
 # Python
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
 *.pyd
-*.egg-info/
-.dist-info/
-.eggs/
 
-# Virtual envs
-.venv/
-venv/
-ENV/
-env/
+# Local env & temp
+.env
+*.bak
+*.zip
+*.zip-backup-*
 
-# OS/editor junk
+# OS
 .DS_Store
 Thumbs.db
-.idea/
-.vscode/
-*.swp
-
-# Caches & logs
-.cache/
-.mypy_cache/
-.pytest_cache/
-coverage.xml
-htmlcov/
-*.log
-EOF
-# runtime & local data
-data/
-lore-scrolls/
-*.idx
-*.npy
-*.npz
-# bytecode
-__pycache__/
-*.py[cod]
